@@ -6,7 +6,7 @@ Responde no chat do Minecraft usando GPT para processar intenções; monitor 2x4
 
 -- ===================== CONFIG ===================== --
 local J = {}
-J.version = "1.1.0"
+J.version = "1.1.1" -- Atualizado para indicar versão revisada
 J.color = colors.cyan
 J.accent = colors.orange
 J.bg = colors.black
@@ -14,7 +14,7 @@ J.fg = colors.white
 J.monitor = peripheral.wrap("monitor_0") -- Conecta ao monitor_0 (2x4)
 J.monitorSide = "monitor_0"
 J.useMonitor = true
-J.chatBox = peripheral.wrap("chat_0") -- Conecta ao chatBox do Plethora para enviar mensagens
+J.chatBox = peripheral.wrap("chat_0") -- Conecta ao chatBox do Plethora
 J.chatBoxSide = "chat_0"
 J.tracking = false
 J.trackPoints = {}
@@ -32,8 +32,10 @@ J.gptApiUrl = "https://api.openai.com/v1/chat/completions"
 -- ===================== UTIL ===================== --
 local function log(line)
   local h = fs.open(J.logFile, fs.exists(J.logFile) and "a" or "w")
-  h.writeLine(os.date("%d/%m/%Y %H:%M:%S") .. " | " .. line)
-  h.close()
+  if h then
+    h.writeLine(os.date("%d/%m/%Y %H:%M:%S") .. " | " .. line)
+    h.close()
+  end
 end
 
 local function timeStr() return textutils.formatTime(os.time(), true) end
@@ -60,9 +62,14 @@ end
 
 local function sendToChat(message)
   if J.chatBox then
-    J.chatBox.say(message)
+    local success, err = pcall(function() J.chatBox.say(message) end)
+    if not success then
+      mprint("CHAT?", colors.red)
+      log("FATAL: Erro ao enviar mensagem ao chat: " .. tostring(err))
+    end
   else
-    log("AVISO: ChatBox não encontrado, mensagem não enviada: " .. message)
+    mprint("CHAT?", colors.red)
+    log("FATAL: ChatBox não encontrado")
   end
 end
 
@@ -75,7 +82,7 @@ local function banner()
     J.monitor.setTextColor(J.color)
     J.monitor.write("J.A.") -- Linha 1: J.A.
     J.monitor.setCursorPos(1, 2)
-    J.monitor.write("R.V.") -- Linha 2: R.V. (ajustado para J.A.R.V.I.S em 2x4)
+    J.monitor.write("R.V.") -- Linha 2: R.V. (J.A.R.V.I.S em 2x4)
     J.monitor.setTextColor(J.fg)
   end
 end
@@ -85,6 +92,7 @@ local function callGpt(prompt)
   if not http then
     mprint("HTTP?", colors.red)
     log("FATAL: HTTP API não habilitado")
+    sendToChat("Erro: HTTP API não habilitado.")
     return nil
   end
 
@@ -94,15 +102,21 @@ local function callGpt(prompt)
   }
   local body = textutils.serializeJSON({
     model = "gpt-3.5-turbo",
-    messages = {{ role = "system", content = "Você é JARVIS, um assistente inteligente. Comandos disponíveis: help (lista comandos), hora (mostra a hora). Se a mensagem do usuário for exatamente um comando, responda com JSON: {type: 'command', name: 'comando'}. Caso contrário, responda com JSON: {type: 'response', text: 'sua resposta amigável e útil'}. Sempre use JSON." },
-                 { role = "user", content = prompt }},
-    max_tokens = 100 -- Ajustado para respostas curtas
+    messages = {
+      {
+        role = "system",
+        content = "Você é JARVIS, um assistente inteligente. Comandos disponíveis: help (lista comandos), hora (mostra a hora). Se a mensagem do usuário for exatamente um comando, responda com JSON: {type: 'command', name: 'comando'}. Caso contrário, responda com JSON: {type: 'response', text: 'sua resposta amigável e útil'}. Sempre use JSON."
+      },
+      { role = "user", content = prompt }
+    },
+    max_tokens = 100
   })
 
   local response, err = http.post(J.gptApiUrl, body, headers)
   if not response then
     mprint("API?", colors.red)
     log("FATAL: Erro ao chamar GPT API: " .. (err or "Desconhecido"))
+    sendToChat("Erro ao conectar com o assistente.")
     return nil
   end
 
@@ -111,17 +125,16 @@ local function callGpt(prompt)
   local data = textutils.unserializeJSON(responseBody)
   if data and data.choices and data.choices[1] and data.choices[1].message then
     local gptResponse = trim(data.choices[1].message.content)
-    -- Tentar parsear como JSON
     local jsonData = textutils.unserializeJSON(gptResponse)
     if jsonData and jsonData.type then
       return jsonData
     else
-      -- Se não for JSON válido, tratar como resposta normal
       return {type = "response", text = gptResponse}
     end
   else
     mprint("RES?", colors.red)
     log("FATAL: Resposta inválida da API")
+    sendToChat("Erro: Resposta inválida do assistente.")
     return nil
   end
 end
@@ -129,8 +142,8 @@ end
 -- ===================== COMANDOS ===================== --
 local commands = {}
 local function register(name, desc, fn) commands[name] = {desc=desc, run=fn} end
-register("help", "Lista comandos.", function() sendToChat("Comandos disponíveis: help, hora") end)
-register("hora", "Mostra a hora.", function() sendToChat("Hora atual: " .. timeStr()) end)
+register("help", "Lista comandos.", function() sendToChat("Comandos: help, hora") end)
+register("hora", "Mostra a hora.", function() sendToChat("Hora: " .. timeStr()) end)
 
 -- ===================== AWAKE SYSTEM ===================== --
 local function wakeJarvis()
@@ -147,10 +160,12 @@ end
 -- ===================== LOOP ===================== --
 local function runCommand(line)
   local s = trim(line or "")
-  if s == "" then return end
+  if s == "" then
+    sendToChat("Oi! Como posso ajudar?")
+    return
+  end
   log("CMD: " .. s)
   
-  -- Sempre usar GPT para processar a intenção
   local gptResult = callGpt(s)
   if gptResult then
     if gptResult.type == "command" and gptResult.name then
@@ -184,15 +199,18 @@ end
 local function main()
   if J.useMonitor and not J.monitor then
     log("FATAL: Monitor_0 não encontrado")
+    sendToChat("Erro: Monitor_0 não encontrado.")
     return
   end
   if not J.chatBox then
     log("FATAL: ChatBox não encontrado")
+    mprint("CHAT?", colors.red)
     return
   end
   if not J.gptApiKey or J.gptApiKey == "SUA_CHAVE_API_AQUI" then
     mprint("API?", colors.yellow)
     log("AVISO: Chave da API do GPT não configurada")
+    sendToChat("Aviso: Configure a chave da API do GPT.")
   end
   banner()
   mprint("OK", colors.green)
@@ -210,4 +228,8 @@ local function main()
 end
 
 local ok, err = pcall(main)
-if not ok then mprint("ERR!", colors.red) log("FATAL: "..tostring(err)) end
+if not ok then
+  mprint("ERR!", colors.red)
+  log("FATAL: " .. tostring(err))
+  sendToChat("Erro fatal: " .. tostring(err))
+end

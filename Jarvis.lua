@@ -1,12 +1,12 @@
 --[[
 JARVIS para ComputerCraft / CC:Tweaked com ativação por palavra-chave no chat.
-Salve como /startup.lua e use com Plethora ChatBox.
+Salve como /startup.lua e use com Plethora ChatBox ("Chat Box").
 Responde no chat do Minecraft usando GPT para processar intenções; monitor 2x4 exibe "J.A.R.V.I.S" e status.
 ]]
 
 -- ===================== CONFIG ===================== --
 local J = {}
-J.version = "1.1.1" -- Atualizado para indicar versão revisada
+J.version = "1.1.2" -- Atualizado para indicar ajuste de periférico
 J.color = colors.cyan
 J.accent = colors.orange
 J.bg = colors.black
@@ -14,8 +14,8 @@ J.fg = colors.white
 J.monitor = peripheral.wrap("monitor_0") -- Conecta ao monitor_0 (2x4)
 J.monitorSide = "monitor_0"
 J.useMonitor = true
-J.chatBox = peripheral.wrap("chat_0") -- Conecta ao chatBox do Plethora
-J.chatBoxSide = "chat_0"
+J.chatBox = peripheral.wrap("Chat Box") -- Conecta ao Chat Box do Advanced Peripherals
+J.chatBoxSide = "Chat Box"
 J.tracking = false
 J.trackPoints = {}
 J.rednetOpen = false
@@ -69,7 +69,7 @@ local function sendToChat(message)
     end
   else
     mprint("CHAT?", colors.red)
-    log("FATAL: ChatBox não encontrado")
+    log("FATAL: Chat Box não encontrado")
   end
 end
 
@@ -203,7 +203,7 @@ local function main()
     return
   end
   if not J.chatBox then
-    log("FATAL: ChatBox não encontrado")
+    log("FATAL: Chat Box não encontrado")
     mprint("CHAT?", colors.red)
     return
   end
